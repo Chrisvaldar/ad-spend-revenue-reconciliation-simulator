@@ -1,47 +1,46 @@
 # Ad Spend / Revenue Reconciliation Simulator
 
-A small simulator for the core timing problem in ad-spend financing: **spend lands instantly, revenue arrives later and without a clean foreign key**. The matcher reconciles the two using amount proximity and time windows, producing confidence scores instead of binary yes/no matches.
+I built this to get a feel for the timing problem in ad-spend financing. Spend happens right away, but the revenue it generates shows up later (and there's no clean ID linking the two). So you end up guessing which revenue belongs to which spend, and how confident you are in that guess before you'd actually front money against it.
+
+This project simulates that. It's not production-ready, just something I can run and poke at.
 
 ## What it does
 
-- **Spend generator** — fires random ad spend events every few seconds
-- **Revenue generator** — schedules delayed revenue (5–90s) with amount variance (85–105% of spend)
-- **Matching engine** — scores candidate spends per revenue event; auto-matches only when confidence is high *and* unambiguous
-- **Stale checker** — flags pending spends that exceed the trust window for manual review
+- **Spend generator**: fires random ad spend events every few seconds
+- **Revenue generator**: sends back delayed revenue (5-90s later) with slightly different amounts (roughly 85-105% of the spend)
+- **Matching engine**: tries to pair revenue with pending spends based on amount + timing, outputs a confidence score instead of a hard yes/no
+- **Stale checker**: if a spend sits unmatched too long, it gets flagged as stale
 
-Three spend states: `pending` → `matched` or `stale`.
+Each spend ends up as `pending`, `matched`, or `stale`.
 
 ## Setup
 
-**Requirements:** Python 3.11+, Docker (for Redis)
+You'll need Python 3.11+ and Docker (for Redis).
 
 ```bash
-# Clone and install
 pip install -r requirements.txt
 
-# Start Redis
 docker compose up -d
 
-# Optional: copy env file (defaults work out of the box)
+# optional, defaults are fine without this
 cp .env.example .env
 
-# Run the API + background workers
 uvicorn app.main:app --reload
 ```
 
-Open `http://127.0.0.1:8000/status` after ~30 seconds to see matched, pending, and stale counts accumulate.
+Give it ~30 seconds, then hit `http://127.0.0.1:8000/status` to watch the counts move.
 
 ## API
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /health` | Redis connectivity check |
-| `GET /status` | Counts (`matched`, `pending`, `stale`, `orphan_revenue`), current config, recent matches |
-| `GET /events?limit=50` | Recent state transitions with confidence scores |
+| Endpoint | What it gives you |
+|----------|-------------------|
+| `GET /health` | Is Redis up |
+| `GET /status` | Counts (matched / pending / stale / orphan), config, recent matches |
+| `GET /events?limit=50` | Recent state changes with confidence scores |
 | `GET /config` | Current thresholds |
-| `PATCH /config` | Tune thresholds at runtime (see below) |
+| `PATCH /config` | Change thresholds on the fly |
 
-Example status response:
+Example `/status` response:
 
 ```json
 {
@@ -51,9 +50,9 @@ Example status response:
 }
 ```
 
-## Configuration
+## Config
 
-Set via environment variables (see `app/config.py`) or patch at runtime:
+Env vars work (check `app/config.py`), or you can patch at runtime:
 
 ```bash
 curl -X PATCH http://127.0.0.1:8000/config \
@@ -61,14 +60,14 @@ curl -X PATCH http://127.0.0.1:8000/config \
   -d '{"ambiguity_margin": 0.05, "stale_after_sec": 150}'
 ```
 
-| Variable | Default | What it controls |
-|----------|---------|------------------|
-| `MATCH_THRESHOLD` | 0.75 | Minimum confidence to auto-match |
-| `AMBIGUITY_MARGIN` | 0.15 | Required gap between top two candidates |
-| `AMOUNT_TOLERANCE_PCT` | 0.15 | How far revenue amount can drift from spend |
-| `STALE_AFTER_SEC` | 120 | How long to wait before flagging a spend stale |
-| `LOOKBACK_SEC` | 300 | How far back to search for candidate spends |
-| `REVENUE_DELAY_MAX_SEC` | 90 | Max simulated revenue delay |
+| Variable | Default | What it does |
+|----------|---------|--------------|
+| `MATCH_THRESHOLD` | 0.75 | Min confidence to auto-match |
+| `AMBIGUITY_MARGIN` | 0.15 | How much better the top candidate needs to be vs the second |
+| `AMOUNT_TOLERANCE_PCT` | 0.15 | How far off revenue amount can be from spend |
+| `STALE_AFTER_SEC` | 120 | When to give up waiting and flag a spend stale |
+| `LOOKBACK_SEC` | 300 | How far back to look for candidate spends |
+| `REVENUE_DELAY_MAX_SEC` | 90 | Longest simulated revenue delay |
 
 ## Tests
 
@@ -76,28 +75,28 @@ curl -X PATCH http://127.0.0.1:8000/config \
 pytest
 ```
 
-The ambiguity tests in `tests/test_matching_ambiguity.py` reproduce the core failure modes — worth running before demoing.
+`tests/test_matching_ambiguity.py` is the interesting one. That's where the messy cases live.
 
-## The snag: ambiguity vs stale flags
+## What actually broke
 
-The thing that broke first in this simulator wasn't the scoring formula — it was **ambiguous attribution under similar concurrent spends**.
+The scoring math was fine. The annoying part was **two similar spends landing close together**.
 
-When two spends of similar amount land within seconds of each other, a single revenue event scores well against both. The `ambiguity_margin` rule correctly refuses to guess, leaving both spends pending. If revenue delay is near the stale window, those spends can flip to `stale` before the matcher ever gets a confident link — even though revenue did arrive.
+Say you get two $100 spends within 30 seconds, then $97 in revenue shows up. Both spends score pretty well. The matcher refuses to pick one (`ambiguity_margin`), so both stay pending. If revenue takes long enough, they can go stale before anything gets matched, even though the revenue did arrive.
 
-Tightening `ambiguity_margin` fixes that (one spend auto-matches) but increases false-positive risk: the closer spend wins, not necessarily the right one. Widening `stale_after_sec` buys time but ties up capital longer. There is no free knob — it's the same tradeoff you'd face before financing against unattributed spend.
+You can lower `ambiguity_margin` and it'll just pick the closer spend. But that might be the wrong one. Or you can raise `stale_after_sec` to wait longer, but then you're sitting on unmatched spend forever.
 
-That tension — **confidence vs capital efficiency vs manual review noise** — is the hard part this simulator is meant to surface.
+There's no setting that fixes all of it. That's kinda the whole point.
 
-## Project structure
+## Project layout
 
 ```
 app/
-├── main.py              # FastAPI + worker lifespan
-├── config.py            # Pydantic settings
-├── clock.py             # RealClock / SimClock (tests use SimClock)
-├── generators/          # Spend + revenue event loops
-├── matching/            # Scoring, matcher, stale checker
-├── models/              # Event and reconciliation types
-├── store/               # Redis abstraction
+├── main.py              # FastAPI + background workers
+├── config.py            # settings
+├── clock.py             # RealClock / SimClock
+├── generators/          # spend + revenue loops
+├── matching/            # scoring, matcher, stale checker
+├── models/              # data types
+├── store/               # Redis stuff
 └── api/                 # HTTP routes
 ```
