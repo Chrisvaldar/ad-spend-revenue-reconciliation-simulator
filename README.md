@@ -4,8 +4,6 @@ I built this to get a feel for the timing problem in ad-spend financing. Spend h
 
 **Live demo:** https://ad-spend-revenue-reconciliation-simulator-production.up.railway.app/
 
-Give it ~30 seconds after opening — spends and revenue start populating the dashboard.
-
 ## What it does
 
 - **Spend generator**: fires random ad spend events every few seconds
