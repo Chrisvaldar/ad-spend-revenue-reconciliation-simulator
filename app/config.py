@@ -14,10 +14,10 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
 
     # Generator timing (seconds)
-    spend_interval_min_sec: float = Field(default=2.0, ge=0.1)
-    spend_interval_max_sec: float = Field(default=5.0, ge=0.1)
-    revenue_delay_min_sec: float = Field(default=5.0, ge=0.0)
-    revenue_delay_max_sec: float = Field(default=90.0, ge=0.0)
+    spend_interval_min_sec: float = Field(default=4.0, ge=0.1)
+    spend_interval_max_sec: float = Field(default=10.0, ge=0.1)
+    revenue_delay_min_sec: float = Field(default=10.0, ge=0.0)
+    revenue_delay_max_sec: float = Field(default=180.0, ge=0.0)
     revenue_amount_min_factor: float = Field(default=0.85, ge=0.0)
     revenue_amount_max_factor: float = Field(default=1.05, ge=0.0)
 
@@ -27,10 +27,10 @@ class Settings(BaseSettings):
     amount_tolerance_pct: float = Field(default=0.15, ge=0.0, le=1.0)
     amount_weight: float = Field(default=0.6, ge=0.0, le=1.0)
     time_weight: float = Field(default=0.4, ge=0.0, le=1.0)
-    lookback_sec: float = Field(default=300.0, ge=0.0)
+    lookback_sec: float = Field(default=600.0, ge=0.0)
 
     # Stale / trust window
-    stale_after_sec: float = Field(default=120.0, ge=0.0)
+    stale_after_sec: float = Field(default=240.0, ge=0.0)
     stale_check_interval_sec: float = Field(default=1.0, ge=0.1)
 
     # Demo / API

@@ -17,7 +17,7 @@ def sim_clock() -> SimClock:
 
 @pytest.fixture
 def settings() -> Settings:
-    return Settings()
+    return Settings(stale_after_sec=120.0, lookback_sec=300.0)
 
 
 @pytest_asyncio.fixture

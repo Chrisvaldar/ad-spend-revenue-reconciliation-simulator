@@ -6,7 +6,7 @@ from app.matching.scoring import amount_delta_pct, amount_score, confidence, tim
 
 @pytest.fixture
 def settings() -> Settings:
-    return Settings()
+    return Settings(stale_after_sec=120.0, lookback_sec=300.0)
 
 
 def test_amount_score_exact_match() -> None:
