@@ -2,8 +2,6 @@
 
 I built this to get a feel for the timing problem in ad-spend financing. Spend happens right away, but the revenue it generates shows up later (and there's no clean ID linking the two). So you end up guessing which revenue belongs to which spend, and how confident you are in that guess before you'd actually front money against it.
 
-This project simulates that. It's not production-ready, just something I can run and poke at.
-
 ## What it does
 
 - **Spend generator**: fires random ad spend events every few seconds
@@ -75,8 +73,6 @@ curl -X PATCH http://127.0.0.1:8000/config \
 pytest
 ```
 
-`tests/test_matching_ambiguity.py` is the interesting one. That's where the messy cases live.
-
 ## What actually broke
 
 The scoring math was fine. The annoying part was **two similar spends landing close together**.
@@ -84,8 +80,6 @@ The scoring math was fine. The annoying part was **two similar spends landing cl
 Say you get two $100 spends within 30 seconds, then $97 in revenue shows up. Both spends score pretty well. The matcher refuses to pick one (`ambiguity_margin`), so both stay pending. If revenue takes long enough, they can go stale before anything gets matched, even though the revenue did arrive.
 
 You can lower `ambiguity_margin` and it'll just pick the closer spend. But that might be the wrong one. Or you can raise `stale_after_sec` to wait longer, but then you're sitting on unmatched spend forever.
-
-There's no setting that fixes all of it. That's kinda the whole point.
 
 ## Project layout
 
