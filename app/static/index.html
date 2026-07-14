@@ -230,6 +230,69 @@
 
     .legend span.spend { color: #f87171; font-weight: 600; }
     .legend span.revenue { color: #4ade80; font-weight: 600; }
+
+    .dollar-banner {
+      background: linear-gradient(135deg, #1a1d27 0%, #1f2433 100%);
+      border: 1px solid #3d3a1e;
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.5rem;
+      font-size: 1.15rem;
+      font-weight: 600;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 1rem;
+      align-items: baseline;
+    }
+
+    .dollar-banner .pending-total { color: #facc15; }
+    .dollar-banner .at-risk { color: #fb923c; }
+    .dollar-banner .sep { color: #555; font-weight: 400; }
+    .dollar-banner .sub { font-size: 0.78rem; font-weight: 400; color: #6b7280; width: 100%; }
+
+    .ambiguous-block {
+      padding: 0.75rem 0;
+      border-bottom: 1px solid #1f2230;
+    }
+
+    .ambiguous-block:last-child { border-bottom: none; }
+
+    .ambiguous-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.6rem;
+      flex-wrap: wrap;
+    }
+
+    .candidate-compare {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 0.75rem;
+      align-items: stretch;
+    }
+
+    .candidate-card {
+      background: #14171f;
+      border: 1px solid #2a2e3a;
+      border-radius: 8px;
+      padding: 0.65rem 0.8rem;
+      font-size: 0.82rem;
+    }
+
+    .candidate-card.winner { border-color: #3d3a1e; }
+    .candidate-card .amt { font-weight: 700; color: #f87171; font-size: 0.95rem; }
+    .candidate-card .score { color: #facc15; font-weight: 600; margin-top: 0.15rem; }
+    .candidate-card .sub { color: #6b7280; font-size: 0.75rem; margin-top: 0.15rem; }
+
+    .candidate-vs {
+      display: flex;
+      align-items: center;
+      color: #555;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
   </style>
 </head>
 <body>
@@ -253,6 +316,13 @@
   </header>
 
   <div class="error" id="error"></div>
+
+  <div class="dollar-banner" id="dollar-banner">
+    <span class="pending-total" id="pending-total">$0 pending</span>
+    <span class="sep">·</span>
+    <span class="at-risk" id="at-risk-total">$0 at risk of going stale in &lt;60s</span>
+    <span class="sub">Dollar exposure — what you'd be financing against (or flagging for review)</span>
+  </div>
 
   <div class="main-grid">
     <section>
@@ -317,11 +387,19 @@
   <script>
     function fmtMoney(n) {
       if (n == null) return "?";
-      return "$" + Number(n).toFixed(2);
+      return "$" + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function fmtRelative(ts) {
+      const sec = Math.max(0, Math.round(Date.now() / 1000 - ts));
+      if (sec < 5) return "just now";
+      if (sec < 60) return sec + "s ago";
+      if (sec < 3600) return Math.round(sec / 60) + "m ago";
+      return Math.round(sec / 3600) + "h ago";
     }
 
     function fmtTime(ts) {
-      return new Date(ts * 1000).toLocaleTimeString();
+      return fmtRelative(ts);
     }
 
     function fmtPct(n) {
@@ -345,7 +423,7 @@
       </div>`;
     }
 
-    function renderWaiting(items, staleAfter) {
+    function renderWaiting(items) {
       const el = document.getElementById("waiting");
       if (!items.length) {
         el.innerHTML = "<p class='empty'>No pending spends right now.</p>";
@@ -355,9 +433,38 @@
         <div class="waiting-item">
           <span class="money spend">${fmtMoney(w.amount)}</span>
           <span>spent, waiting for revenue</span>
-          <span class="meta">${w.waiting_sec}s so far · stale in ${Math.max(0, staleAfter - w.waiting_sec).toFixed(0)}s</span>
+          <span class="meta">${Math.round(w.waiting_sec)}s ago · stale in ${Math.round(w.stale_in_sec)}s</span>
         </div>
       `).join("");
+    }
+
+    function renderCandidateCard(candidate, label) {
+      return `<div class="candidate-card ${label === "best" ? "winner" : ""}">
+        <div class="amt">${fmtMoney(candidate.spend_amount)} spend</div>
+        <div class="score">${fmtPct(candidate.confidence)} match</div>
+        <div class="sub">${(candidate.amount_delta_pct * 100).toFixed(1)}% off · waited ${Math.round(candidate.elapsed_sec)}s</div>
+      </div>`;
+    }
+
+    function renderAmbiguousEvent(e) {
+      const candidates = e.top_candidates || [];
+      const cards = candidates.length >= 2
+        ? `<div class="candidate-compare">
+            ${renderCandidateCard(candidates[0], "best")}
+            <div class="candidate-vs">vs</div>
+            ${renderCandidateCard(candidates[1], "second")}
+          </div>`
+        : `<div class="candidate-compare"><div class="candidate-card">${fmtMoney(e.spend_amount)} spend · ${fmtPct(e.confidence)}</div></div>`;
+
+      return `<div class="ambiguous-block">
+        <div class="ambiguous-header">
+          <span class="badge ambiguous">ambiguous</span>
+          <span class="money revenue">${fmtMoney(e.revenue_amount)} revenue</span>
+          <span class="event-detail">won't guess — scores too close</span>
+          <span class="meta">${fmtRelative(e.timestamp)}</span>
+        </div>
+        ${cards}
+      </div>`;
     }
 
     function renderMatches(matches) {
@@ -390,12 +497,7 @@
         </div>`;
       }
       if (type === "ambiguous") {
-        return `<div class="compare-row">
-          <span class="badge ambiguous">ambiguous</span>
-          <span class="money revenue">${fmtMoney(e.revenue_amount)} revenue</span>
-          <span>→ multiple spends could match (best: ${fmtMoney(e.spend_amount)}, ${conf}) — won't guess</span>
-          <span class="meta">${e.detail || ""} · ${fmtTime(e.timestamp)}</span>
-        </div>`;
+        return renderAmbiguousEvent(e);
       }
       if (type === "below_threshold") {
         return `<div class="compare-row">
@@ -455,8 +557,15 @@
         document.getElementById("count-stale").textContent = status.counts.stale;
         document.getElementById("count-orphan").textContent = status.counts.orphan_revenue;
 
+        const dollars = status.dollars || {};
+        const riskSec = dollars.at_risk_within_sec || 60;
+        document.getElementById("pending-total").textContent =
+          fmtMoney(dollars.pending_total) + " pending";
+        document.getElementById("at-risk-total").textContent =
+          fmtMoney(dollars.at_risk_total) + " at risk of going stale in <" + riskSec + "s";
+
         renderConfig(status.config);
-        renderWaiting(status.waiting_spends || [], status.config.stale_after_sec);
+        renderWaiting(status.waiting_spends || []);
         renderMatches(status.recent_matches);
         renderEvents(events);
 

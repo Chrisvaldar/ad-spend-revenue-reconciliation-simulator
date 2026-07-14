@@ -43,6 +43,14 @@ class ReconciliationResult(BaseModel):
     candidates: list[MatchCandidate] = Field(default_factory=list)
 
 
+class CandidateSnapshot(BaseModel):
+    spend_id: UUID
+    spend_amount: float = Field(gt=0)
+    confidence: float = Field(ge=0.0, le=1.0)
+    amount_delta_pct: float = Field(ge=0.0)
+    elapsed_sec: float = Field(ge=0.0)
+
+
 class StateTransition(BaseModel):
     timestamp: float
     event_type: str
@@ -55,4 +63,5 @@ class StateTransition(BaseModel):
     revenue_amount: float | None = None
     elapsed_sec: float | None = None
     amount_delta_pct: float | None = None
+    top_candidates: list[CandidateSnapshot] = Field(default_factory=list)
     detail: str | None = None

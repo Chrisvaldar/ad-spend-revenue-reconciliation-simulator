@@ -7,6 +7,7 @@ from app.config import Settings
 from app.matching.scoring import amount_delta_pct, confidence
 from app.models.events import RevenueEvent
 from app.models.reconciliation import (
+    CandidateSnapshot,
     MatchCandidate,
     MatchOutcome,
     ReconciliationResult,
@@ -30,6 +31,29 @@ class MatchingEngine:
         self.clock = clock
         self.consumer_name = consumer_name
         self._running = False
+
+    def _candidate_snapshots(
+        self,
+        candidates: list[MatchCandidate],
+        pending_spends: list[SpendRecord],
+        limit: int = 2,
+    ) -> list[CandidateSnapshot]:
+        spend_map = {spend.id: spend for spend in pending_spends}
+        snapshots: list[CandidateSnapshot] = []
+        for candidate in candidates[:limit]:
+            spend = spend_map.get(candidate.spend_id)
+            if spend is None:
+                continue
+            snapshots.append(
+                CandidateSnapshot(
+                    spend_id=candidate.spend_id,
+                    spend_amount=spend.amount,
+                    confidence=candidate.confidence,
+                    amount_delta_pct=candidate.amount_delta_pct,
+                    elapsed_sec=candidate.elapsed_sec,
+                )
+            )
+        return snapshots
 
     def build_candidates(
         self,
@@ -147,6 +171,12 @@ class MatchingEngine:
             if best
             else None
         )
+        snapshot_limit = 2 if result.outcome == MatchOutcome.AMBIGUOUS else 1
+        top_candidates = self._candidate_snapshots(
+            candidates,
+            pending_spends,
+            limit=snapshot_limit,
+        )
         await self.store.increment_orphan_revenue()
         await self.store.log_transition(
             StateTransition(
@@ -159,6 +189,7 @@ class MatchingEngine:
                 revenue_amount=revenue.amount,
                 elapsed_sec=best.elapsed_sec if best else None,
                 amount_delta_pct=best.amount_delta_pct if best else None,
+                top_candidates=top_candidates,
                 detail=f"candidate_count={len(candidates)}",
             )
         )

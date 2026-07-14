@@ -73,18 +73,36 @@ async def status(request: Request) -> dict:
 
     pending_spends = await store.list_pending_spends_since(0)
     pending_spends.sort(key=lambda s: s.created_at, reverse=True)
+
+    pending_total = round(sum(s.amount for s in pending_spends), 2)
+    at_risk_threshold_sec = 60.0
+    at_risk_total = round(
+        sum(
+            s.amount
+            for s in pending_spends
+            if 0 < (settings.stale_after_sec - (now - s.created_at)) <= at_risk_threshold_sec
+        ),
+        2,
+    )
+
     waiting = [
         {
             "spend_id": str(s.id),
             "amount": s.amount,
             "created_at": s.created_at,
             "waiting_sec": round(now - s.created_at, 1),
+            "stale_in_sec": round(max(0.0, settings.stale_after_sec - (now - s.created_at)), 1),
         }
         for s in pending_spends[:10]
     ]
 
     return {
         "counts": counts,
+        "dollars": {
+            "pending_total": pending_total,
+            "at_risk_total": at_risk_total,
+            "at_risk_within_sec": at_risk_threshold_sec,
+        },
         "config": _public_config(settings),
         "recent_matches": recent_matches,
         "waiting_spends": waiting,
