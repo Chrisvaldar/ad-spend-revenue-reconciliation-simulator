@@ -26,7 +26,7 @@ cp .env.example .env
 uvicorn app.main:app --reload
 ```
 
-Give it ~30 seconds, then hit `http://127.0.0.1:8000/status` to watch the counts move.
+Give it ~30 seconds, then open `http://127.0.0.1:8000/` for the live dashboard (or hit `/status` for raw JSON).
 
 ## API
 

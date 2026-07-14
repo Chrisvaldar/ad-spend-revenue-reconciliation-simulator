@@ -37,6 +37,8 @@ class StaleChecker:
                     spend_id=spend.id,
                     from_status=SpendStatus.PENDING,
                     to_status=SpendStatus.STALE,
+                    spend_amount=spend.amount,
+                    elapsed_sec=now - spend.created_at,
                     detail=(
                         f"waited {now - spend.created_at:.1f}s "
                         f"(limit {self.settings.stale_after_sec}s)"

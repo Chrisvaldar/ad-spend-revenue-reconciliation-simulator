@@ -48,23 +48,46 @@ async def health(request: Request) -> dict[str, str]:
 async def status(request: Request) -> dict:
     store = request.app.state.store
     settings: Settings = request.app.state.settings
+    clock = request.app.state.clock
+    now = clock.now()
     counts = await store.get_stats()
     events = await store.get_recent_events(limit=50)
-    recent_matches = [
+    recent_matches = []
+    for event in events:
+        if event.event_type != "matched":
+            continue
+        recent_matches.append(
+            {
+                "timestamp": event.timestamp,
+                "spend_id": str(event.spend_id) if event.spend_id else None,
+                "revenue_id": str(event.revenue_id) if event.revenue_id else None,
+                "confidence": event.confidence,
+                "spend_amount": event.spend_amount,
+                "revenue_amount": event.revenue_amount,
+                "elapsed_sec": event.elapsed_sec,
+                "amount_delta_pct": event.amount_delta_pct,
+            }
+        )
+        if len(recent_matches) >= 10:
+            break
+
+    pending_spends = await store.list_pending_spends_since(0)
+    pending_spends.sort(key=lambda s: s.created_at, reverse=True)
+    waiting = [
         {
-            "timestamp": event.timestamp,
-            "spend_id": str(event.spend_id) if event.spend_id else None,
-            "revenue_id": str(event.revenue_id) if event.revenue_id else None,
-            "confidence": event.confidence,
+            "spend_id": str(s.id),
+            "amount": s.amount,
+            "created_at": s.created_at,
+            "waiting_sec": round(now - s.created_at, 1),
         }
-        for event in events
-        if event.event_type == "matched"
-    ][:10]
+        for s in pending_spends[:10]
+    ]
 
     return {
         "counts": counts,
         "config": _public_config(settings),
         "recent_matches": recent_matches,
+        "waiting_spends": waiting,
     }
 
 

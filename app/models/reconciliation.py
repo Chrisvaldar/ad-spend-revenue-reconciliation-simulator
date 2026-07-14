@@ -51,4 +51,8 @@ class StateTransition(BaseModel):
     from_status: SpendStatus | None = None
     to_status: SpendStatus | None = None
     confidence: float | None = None
+    spend_amount: float | None = None
+    revenue_amount: float | None = None
+    elapsed_sec: float | None = None
+    amount_delta_pct: float | None = None
     detail: str | None = None

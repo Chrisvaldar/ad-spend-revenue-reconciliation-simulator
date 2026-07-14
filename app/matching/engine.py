@@ -116,6 +116,8 @@ class MatchingEngine:
         if result.outcome == MatchOutcome.MATCHED:
             assert result.spend_id is not None
             assert result.confidence is not None
+            best = result.candidates[0]
+            spend = next(s for s in pending_spends if s.id == result.spend_id)
             await self.store.mark_matched(
                 result.spend_id,
                 revenue.id,
@@ -131,17 +133,32 @@ class MatchingEngine:
                     from_status=SpendStatus.PENDING,
                     to_status=SpendStatus.MATCHED,
                     confidence=result.confidence,
+                    spend_amount=spend.amount,
+                    revenue_amount=revenue.amount,
+                    elapsed_sec=best.elapsed_sec,
+                    amount_delta_pct=best.amount_delta_pct,
                 )
             )
             return result
 
+        best = candidates[0] if candidates else None
+        best_spend = (
+            next((s for s in pending_spends if s.id == best.spend_id), None)
+            if best
+            else None
+        )
         await self.store.increment_orphan_revenue()
         await self.store.log_transition(
             StateTransition(
                 timestamp=now,
                 event_type=result.outcome.value,
                 revenue_id=revenue.id,
-                confidence=candidates[0].confidence if candidates else None,
+                spend_id=best.spend_id if best else None,
+                confidence=best.confidence if best else None,
+                spend_amount=best_spend.amount if best_spend else None,
+                revenue_amount=revenue.amount,
+                elapsed_sec=best.elapsed_sec if best else None,
+                amount_delta_pct=best.amount_delta_pct if best else None,
                 detail=f"candidate_count={len(candidates)}",
             )
         )

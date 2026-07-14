@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 
 from app.api.routes import router
 from app.clock import RealClock
@@ -62,3 +64,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(router)
+
+STATIC_DIR = Path(__file__).parent / "static"
+
+
+@app.get("/")
+async def dashboard() -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html")
